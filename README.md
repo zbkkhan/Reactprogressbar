@@ -1,4 +1,4 @@
-# AlmumArtBackground #
+# AlbumArtBackground #
 
 ### What will this project do? ###
 
