@@ -6,6 +6,12 @@ var currentDuration         = 0;
 var currentSeekable			= 0;
 var currentPercentAbsolute  = 0;
 
+var currentVolume2		    = 1;
+var currentTime2             = 0;
+var currentDuration2         = 0;
+var currentSeekable2			= 0;
+var currentPercentAbsolute2  = 0;
+
 // Once the page is ready (finished loading), run some things
 $(function(){
     
@@ -98,10 +104,10 @@ $(function(){
 		[],   // Leave this blank
 		{
 		timeupdate: function(event) {
-			currentTime = parseInt(event.jPlayer.status.currentTime, 10);
-			currentDuration = parseInt(event.jPlayer.status.duration, 10);
-			currentSeekable = parseInt(event.jPlayer.status.seekPercent, 10);
-			currentPercentAbsolute = parseInt(event.jPlayer.status.currentPercentAbsolute, 10);
+			currentTime2 = parseInt(event.jPlayer.status.currentTime, 10);
+			currentDuration2 = parseInt(event.jPlayer.status.duration, 10);
+			currentSeekable2 = parseInt(event.jPlayer.status.seekPercent, 10);
+			currentPercentAbsolute2 = parseInt(event.jPlayer.status.currentPercentAbsolute, 10);
 		},
 		progress: function(event) {
 			console.log("Progress");
@@ -231,11 +237,11 @@ $(function(){
         switch(playernumber){
                 
             case 0:
-        $(jPlayer_2).jPlayer("setMedia", {//Placing new song in the player
+        $('#jPlayer_2').jPlayer("setMedia", {//Placing new song in the player
         mp3: srcvalue
     }
         
-        $(jPlayer_2).jPlayer( "load" );//Going to Preload all the media set in jPlayer beforehand
+        $('#jPlayer_2').jPlayer( "load" );//Going to Preload all the media set in jPlayer beforehand
         
         
         //need to create a PreLoad feature at the 10 second mark
@@ -262,21 +268,23 @@ This command is affected by browser and some ignore the command, or require a ge
 		//$( player_2_selector_here).jPlayer( "option", "cssSelectorAncestor", "#id of the div with all the controls" );
         $(jPlayer_2).jPlayer("option", "cssSelectorAncestor", "#jPlayerContainer");
         
-        while(event.jPlayer.status.currentTime - event.jPlayer.status.duration > 5){
+         var status = $("#jPlayer_1").data("jPlayer").status;
+        while(status.currentTime-status.duration > 5){
            //do nothing while time left is greater than 5 seconds 
         };
         
-        if (event.jPlayer.status.currentTime - event.jPlayer.status.duration <= 5){
+            
+        if (status.currentTime-status.duration <= 5){
             //set initial volume of player 2 to be zero
-            $(jPlayer_2).jPlayer("volume",0) 
+            $('#jPlayer_2').jPlayer("volume",0) 
             
             //Play the new song in the other player
-             $(jPlayer_2).play();
+             $('#jPlayer_2').jPlayer().play();
             
             var presentVolume= currentVolume;
             var previousVolume=0;
             
-            setInterval(function(){//Fading into the next song
+            setInterval(function(event){//Fading into the next song
                 $(jPlayer_1).jplayer("volume", (presentVolume - 0.02 );
                 $(jPlayer_2).jPlayer("volume",(previousVolume + 0.02 );
                 
