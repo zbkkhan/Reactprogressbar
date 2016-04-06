@@ -25,9 +25,7 @@ var SearchResult = React.createClass({
       
     });
        
-
-
-      return(<div>
+      return(<div className="col-md-4 col-md-offset-4"  >
 
           <form><input type="text" placeholder="Search" value={this.state.value} onChange={this.handleChange}/></form>
              
@@ -39,9 +37,6 @@ var SearchResult = React.createClass({
 
 var SONGS = [
     {title: 'Drake- Hotline Bling', Duration: '3:00', link: "https://www.youtube.com/watch?v=uxpDa-c-4Mc"},
-     {title: 'Drake- Hotline Bling', Duration: '3:00', link: "https://www.youtube.com/watch?v=uxpDa-c-4Mc"},
-     {title: 'Drake- Hotline Bling', Duration: '3:00', link: "https://www.youtube.com/watch?v=uxpDa-c-4Mc"},
-     {title: 'Drake- Hotline Bling', Duration: '3:00', link: "https://www.youtube.com/watch?v=uxpDa-c-4Mc"},
     {title: 'Drake- Right Hand', Duration: '3:00', link: "https://www.youtube.com/watch?v=NSG-Ggn6Z_c"},
     {title: 'Selena Gomez - Come and Get it', Duration: '3:00', link: "https://www.youtube.com/watch?v=n-D1EB74Ckg"},
     {title: 'Tony Igy- Astronomia', Duration: '3:00', link: "https://www.youtube.com/watch?v=4Vk5DpS8hmY"}
