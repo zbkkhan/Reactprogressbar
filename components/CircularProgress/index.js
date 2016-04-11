@@ -54,7 +54,7 @@ export default class CircularProgress extends React.Component {
 		}
 		
 		else{
-			if(this.state.progressOpacity<=0){
+			if(this.state.pulseOpacity<=0){
 				this.setState({finished:true});
 			}
 			this.setState({
@@ -142,10 +142,8 @@ export default class CircularProgress extends React.Component {
   
         );
 		
-	}
-		else{
-			return(<div></div>);
 		}
+		
   
     }
 }

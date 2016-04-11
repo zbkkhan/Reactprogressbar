@@ -30248,7 +30248,7 @@
 						}
 					}
 				} else {
-					if (this.state.progressOpacity <= 0) {
+					if (this.state.pulseOpacity <= 0) {
 						this.setState({ finished: true });
 					}
 					this.setState({
@@ -30334,8 +30334,6 @@
 							)
 						)
 					);
-				} else {
-					return _react2.default.createElement('div', null);
 				}
 			}
 		}]);
