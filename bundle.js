@@ -7965,6 +7965,10 @@
 	  }
 	};
 
+	function registerNullComponentID() {
+	  ReactEmptyComponentRegistry.registerNullComponentID(this._rootNodeID);
+	}
+
 	var ReactEmptyComponent = function (instantiate) {
 	  this._currentElement = null;
 	  this._rootNodeID = null;
@@ -7973,7 +7977,7 @@
 	assign(ReactEmptyComponent.prototype, {
 	  construct: function (element) {},
 	  mountComponent: function (rootID, transaction, context) {
-	    ReactEmptyComponentRegistry.registerNullComponentID(rootID);
+	    transaction.getReactMountReady().enqueue(registerNullComponentID, this);
 	    this._rootNodeID = rootID;
 	    return ReactReconciler.mountComponent(this._renderedComponent, rootID, transaction, context);
 	  },
@@ -18696,7 +18700,7 @@
 
 	'use strict';
 
-	module.exports = '0.14.7';
+	module.exports = '0.14.8';
 
 /***/ },
 /* 147 */
@@ -19672,7 +19676,7 @@
 /***/ function(module, exports, __webpack_require__) {
 
 	var __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_DEFINE_RESULT__;/*!
-	 * jQuery JavaScript Library v2.2.0
+	 * jQuery JavaScript Library v2.2.3
 	 * http://jquery.com/
 	 *
 	 * Includes Sizzle.js
@@ -19682,7 +19686,7 @@
 	 * Released under the MIT license
 	 * http://jquery.org/license
 	 *
-	 * Date: 2016-01-08T20:02Z
+	 * Date: 2016-04-05T19:26Z
 	 */
 
 	(function( global, factory ) {
@@ -19738,7 +19742,7 @@
 
 
 	var
-		version = "2.2.0",
+		version = "2.2.3",
 
 		// Define a local copy of jQuery
 		jQuery = function( selector, context ) {
@@ -19949,6 +19953,7 @@
 		},
 
 		isPlainObject: function( obj ) {
+			var key;
 
 			// Not plain objects:
 			// - Any object or value whose internal [[Class]] property is not "[object Object]"
@@ -19958,14 +19963,18 @@
 				return false;
 			}
 
+			// Not own constructor property must be Object
 			if ( obj.constructor &&
-					!hasOwn.call( obj.constructor.prototype, "isPrototypeOf" ) ) {
+					!hasOwn.call( obj, "constructor" ) &&
+					!hasOwn.call( obj.constructor.prototype || {}, "isPrototypeOf" ) ) {
 				return false;
 			}
 
-			// If the function hasn't returned already, we're confident that
-			// |obj| is a plain object, created by {} or constructed with new Object
-			return true;
+			// Own properties are enumerated firstly, so to speed up,
+			// if last one is own, then all properties are own
+			for ( key in obj ) {}
+
+			return key === undefined || hasOwn.call( obj, key );
 		},
 
 		isEmptyObject: function( obj ) {
@@ -24152,7 +24161,7 @@
 		if ( fn === false ) {
 			fn = returnFalse;
 		} else if ( !fn ) {
-			return this;
+			return elem;
 		}
 
 		if ( one === 1 ) {
@@ -24801,14 +24810,14 @@
 		rscriptTypeMasked = /^true\/(.*)/,
 		rcleanScript = /^\s*<!(?:\[CDATA\[|--)|(?:\]\]|--)>\s*$/g;
 
+	// Manipulating tables requires a tbody
 	function manipulationTarget( elem, content ) {
-		if ( jQuery.nodeName( elem, "table" ) &&
-			jQuery.nodeName( content.nodeType !== 11 ? content : content.firstChild, "tr" ) ) {
+		return jQuery.nodeName( elem, "table" ) &&
+			jQuery.nodeName( content.nodeType !== 11 ? content : content.firstChild, "tr" ) ?
 
-			return elem.getElementsByTagName( "tbody" )[ 0 ] || elem;
-		}
-
-		return elem;
+			elem.getElementsByTagName( "tbody" )[ 0 ] ||
+				elem.appendChild( elem.ownerDocument.createElement( "tbody" ) ) :
+			elem;
 	}
 
 	// Replace/restore the type attribute of script elements for safe DOM manipulation
@@ -25315,7 +25324,7 @@
 			// FF meanwhile throws on frame elements through "defaultView.getComputedStyle"
 			var view = elem.ownerDocument.defaultView;
 
-			if ( !view.opener ) {
+			if ( !view || !view.opener ) {
 				view = window;
 			}
 
@@ -25464,15 +25473,18 @@
 			style = elem.style;
 
 		computed = computed || getStyles( elem );
+		ret = computed ? computed.getPropertyValue( name ) || computed[ name ] : undefined;
+
+		// Support: Opera 12.1x only
+		// Fall back to style even without computed
+		// computed is undefined for elems on document fragments
+		if ( ( ret === "" || ret === undefined ) && !jQuery.contains( elem.ownerDocument, elem ) ) {
+			ret = jQuery.style( elem, name );
+		}
 
 		// Support: IE9
 		// getPropertyValue is only needed for .css('filter') (#12537)
 		if ( computed ) {
-			ret = computed.getPropertyValue( name ) || computed[ name ];
-
-			if ( ret === "" && !jQuery.contains( elem.ownerDocument, elem ) ) {
-				ret = jQuery.style( elem, name );
-			}
 
 			// A tribute to the "awesome hack by Dean Edwards"
 			// Android Browser returns percentage for some values,
@@ -26995,6 +27007,12 @@
 		}
 	} );
 
+	// Support: IE <=11 only
+	// Accessing the selectedIndex property
+	// forces the browser to respect setting selected
+	// on the option
+	// The getter ensures a default option is selected
+	// when in an optgroup
 	if ( !support.optSelected ) {
 		jQuery.propHooks.selected = {
 			get: function( elem ) {
@@ -27003,6 +27021,16 @@
 					parent.parentNode.selectedIndex;
 				}
 				return null;
+			},
+			set: function( elem ) {
+				var parent = elem.parentNode;
+				if ( parent ) {
+					parent.selectedIndex;
+
+					if ( parent.parentNode ) {
+						parent.parentNode.selectedIndex;
+					}
+				}
 			}
 		};
 	}
@@ -27197,7 +27225,8 @@
 
 
 
-	var rreturn = /\r/g;
+	var rreturn = /\r/g,
+		rspaces = /[\x20\t\r\n\f]+/g;
 
 	jQuery.fn.extend( {
 		val: function( value ) {
@@ -27273,9 +27302,15 @@
 			option: {
 				get: function( elem ) {
 
-					// Support: IE<11
-					// option.value not trimmed (#14858)
-					return jQuery.trim( elem.value );
+					var val = jQuery.find.attr( elem, "value" );
+					return val != null ?
+						val :
+
+						// Support: IE10-11+
+						// option.text throws exceptions (#14686, #14858)
+						// Strip and collapse whitespace
+						// https://html.spec.whatwg.org/#strip-and-collapse-whitespace
+						jQuery.trim( jQuery.text( elem ) ).replace( rspaces, " " );
 				}
 			},
 			select: {
@@ -27328,7 +27363,7 @@
 					while ( i-- ) {
 						option = options[ i ];
 						if ( option.selected =
-								jQuery.inArray( jQuery.valHooks.option.get( option ), values ) > -1
+							jQuery.inArray( jQuery.valHooks.option.get( option ), values ) > -1
 						) {
 							optionSet = true;
 						}
@@ -27522,7 +27557,7 @@
 					// But now, this "simulate" function is used only for events
 					// for which stopPropagation() is noop, so there is no need for that anymore.
 					//
-					// For the compat branch though, guard for "click" and "submit"
+					// For the 1.x branch though, guard for "click" and "submit"
 					// events is still used, but was moved to jQuery.event.stopPropagation function
 					// because `originalEvent` should point to the original event for the constancy
 					// with other events and for more focused logic
@@ -29023,18 +29058,6 @@
 
 
 
-	// Support: Safari 8+
-	// In Safari 8 documents created via document.implementation.createHTMLDocument
-	// collapse sibling forms: the second one becomes a child of the first one.
-	// Because of that, this security measure has to be disabled in Safari 8.
-	// https://bugs.webkit.org/show_bug.cgi?id=137337
-	support.createHTMLDocument = ( function() {
-		var body = document.implementation.createHTMLDocument( "" ).body;
-		body.innerHTML = "<form></form><form></form>";
-		return body.childNodes.length === 2;
-	} )();
-
-
 	// Argument "data" should be string of html
 	// context (optional): If specified, the fragment will be created in this context,
 	// defaults to document
@@ -29047,12 +29070,7 @@
 			keepScripts = context;
 			context = false;
 		}
-
-		// Stop scripts or inline event handlers from being executed immediately
-		// by using document.implementation
-		context = context || ( support.createHTMLDocument ?
-			document.implementation.createHTMLDocument( "" ) :
-			document );
+		context = context || document;
 
 		var parsed = rsingleTag.exec( data ),
 			scripts = !keepScripts && [];
@@ -29134,7 +29152,7 @@
 			// If it fails, this function gets "jqXHR", "status", "error"
 			} ).always( callback && function( jqXHR, status ) {
 				self.each( function() {
-					callback.apply( self, response || [ jqXHR.responseText, status, jqXHR ] );
+					callback.apply( this, response || [ jqXHR.responseText, status, jqXHR ] );
 				} );
 			} );
 		}
@@ -29292,11 +29310,8 @@
 				}
 
 				// Add offsetParent borders
-				// Subtract offsetParent scroll positions
-				parentOffset.top += jQuery.css( offsetParent[ 0 ], "borderTopWidth", true ) -
-					offsetParent.scrollTop();
-				parentOffset.left += jQuery.css( offsetParent[ 0 ], "borderLeftWidth", true ) -
-					offsetParent.scrollLeft();
+				parentOffset.top += jQuery.css( offsetParent[ 0 ], "borderTopWidth", true );
+				parentOffset.left += jQuery.css( offsetParent[ 0 ], "borderLeftWidth", true );
 			}
 
 			// Subtract parent offsets and element margins
@@ -29511,7 +29526,7 @@
 	'use strict';
 
 	Object.defineProperty(exports, "__esModule", {
-	  value: true
+		value: true
 	});
 
 	var _createClass = function () { function defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } } return function (Constructor, protoProps, staticProps) { if (protoProps) defineProperties(Constructor.prototype, protoProps); if (staticProps) defineProperties(Constructor, staticProps); return Constructor; }; }();
@@ -29520,7 +29535,19 @@
 
 	var _react2 = _interopRequireDefault(_react);
 
-	__webpack_require__(165);
+	__webpack_require__(161);
+
+	var _Progressbar = __webpack_require__(165);
+
+	var _Progressbar2 = _interopRequireDefault(_Progressbar);
+
+	var _CircularProgress = __webpack_require__(168);
+
+	var _CircularProgress2 = _interopRequireDefault(_CircularProgress);
+
+	var _PulseLogo = __webpack_require__(169);
+
+	var _PulseLogo2 = _interopRequireDefault(_PulseLogo);
 
 	function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 
@@ -29532,40 +29559,82 @@
 	//import '../../_test.css';
 
 
+	__webpack_require__(170);
+
 	var App = function (_React$Component) {
-	  _inherits(App, _React$Component);
+		_inherits(App, _React$Component);
 
-	  function App() {
-	    _classCallCheck(this, App);
+		function App() {
+			_classCallCheck(this, App);
 
-	    return _possibleConstructorReturn(this, Object.getPrototypeOf(App).apply(this, arguments));
-	  }
+			return _possibleConstructorReturn(this, Object.getPrototypeOf(App).apply(this, arguments));
+		}
 
-	  _createClass(App, [{
-	    key: 'render',
-	    value: function render() {
-	      return _react2.default.createElement(
-	        'div',
-	        null,
-	        ' This is inside the App components FOLDER. ',
-	        _react2.default.createElement(
-	          'span',
-	          { className: 'sasstest' },
-	          'SASS TEST'
-	        ),
-	        ' '
-	      );
-	    }
-	  }]);
+		_createClass(App, [{
+			key: 'render',
+			value: function render() {
 
-	  return App;
+				return _react2.default.createElement(
+					'div',
+					null,
+					_react2.default.createElement(
+						'div',
+						null,
+						_react2.default.createElement(_CircularProgress2.default, {
+							strokeWidth: '15',
+							radius: '160'
+						})
+					)
+				);
+			}
+		}]);
+
+		return App;
 	}(_react2.default.Component);
 
 	exports.default = App;
 
 /***/ },
-/* 161 */,
-/* 162 */,
+/* 161 */
+/***/ function(module, exports, __webpack_require__) {
+
+	// style-loader: Adds some css to the DOM by adding a <style> tag
+
+	// load the styles
+	var content = __webpack_require__(162);
+	if(typeof content === 'string') content = [[module.id, content, '']];
+	// add the styles to the DOM
+	var update = __webpack_require__(164)(content, {});
+	if(content.locals) module.exports = content.locals;
+	// Hot Module Replacement
+	if(false) {
+		// When the styles change, update the <style> tags
+		if(!content.locals) {
+			module.hot.accept("!!./../../node_modules/css-loader/index.js!./../../node_modules/sass-loader/index.js!./index.scss", function() {
+				var newContent = require("!!./../../node_modules/css-loader/index.js!./../../node_modules/sass-loader/index.js!./index.scss");
+				if(typeof newContent === 'string') newContent = [[module.id, newContent, '']];
+				update(newContent);
+			});
+		}
+		// When the module is disposed, remove the <style> tags
+		module.hot.dispose(function() { update(); });
+	}
+
+/***/ },
+/* 162 */
+/***/ function(module, exports, __webpack_require__) {
+
+	exports = module.exports = __webpack_require__(163)();
+	// imports
+
+
+	// module
+	exports.push([module.id, ".sasstest {\n  font-weight: bold;\n  color: #FF0000; }\n\n.circularprogress {\n  position: relative; }\n\n.pulselogo {\n  position: absolute;\n  margin-bottom: 200px; }\n", ""]);
+
+	// exports
+
+
+/***/ },
 /* 163 */
 /***/ function(module, exports) {
 
@@ -29838,7 +29907,6 @@
 	function applyToTag(styleElement, obj) {
 		var css = obj.css;
 		var media = obj.media;
-		var sourceMap = obj.sourceMap;
 
 		if(media) {
 			styleElement.setAttribute("media", media)
@@ -29856,7 +29924,6 @@
 
 	function updateLink(linkElement, obj) {
 		var css = obj.css;
-		var media = obj.media;
 		var sourceMap = obj.sourceMap;
 
 		if(sourceMap) {
@@ -29879,10 +29946,191 @@
 /* 165 */
 /***/ function(module, exports, __webpack_require__) {
 
+	'use strict';
+
+	Object.defineProperty(exports, "__esModule", {
+	    value: true
+	});
+
+	var _createClass = function () { function defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } } return function (Constructor, protoProps, staticProps) { if (protoProps) defineProperties(Constructor.prototype, protoProps); if (staticProps) defineProperties(Constructor, staticProps); return Constructor; }; }();
+
+	var _react = __webpack_require__(1);
+
+	var _react2 = _interopRequireDefault(_react);
+
+	__webpack_require__(166);
+
+	function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+	function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
+
+	function _possibleConstructorReturn(self, call) { if (!self) { throw new ReferenceError("this hasn't been initialised - super() hasn't been called"); } return call && (typeof call === "object" || typeof call === "function") ? call : self; }
+
+	function _inherits(subClass, superClass) { if (typeof superClass !== "function" && superClass !== null) { throw new TypeError("Super expression must either be null or a function, not " + typeof superClass); } subClass.prototype = Object.create(superClass && superClass.prototype, { constructor: { value: subClass, enumerable: false, writable: true, configurable: true } }); if (superClass) Object.setPrototypeOf ? Object.setPrototypeOf(subClass, superClass) : subClass.__proto__ = superClass; }
+	//import '../../_test.css';
+
+
+	var ProgressBar = function (_React$Component) {
+	    _inherits(ProgressBar, _React$Component);
+
+	    function ProgressBar(props) {
+	        _classCallCheck(this, ProgressBar);
+
+	        var _this = _possibleConstructorReturn(this, Object.getPrototypeOf(ProgressBar).call(this, props));
+
+	        _this.state = { progress: 0 };
+	        return _this;
+	    }
+
+	    _createClass(ProgressBar, [{
+	        key: 'handleChange',
+	        value: function handleChange() {
+	            if (this.state.progress <= 100) {
+	                var updateProgress = this.state.progress;
+	                updateProgress = updateProgress + 10;
+	                this.setState({ progress: updateProgress });
+	            } else {
+	                this.setState({ progress: 100 });
+	            }
+	        }
+	    }, {
+	        key: 'componentDidMount',
+	        value: function componentDidMount() {
+	            var updateProgress = this.state.progress + 10;
+	            this.setState({ progress: updateProgress });
+	        }
+	    }, {
+	        key: 'componentDidUpdate',
+	        value: function componentDidUpdate() {
+	            var $this = this;
+
+	            var timer = setInterval(function () {
+	                if ($this.state.progress < 100) {
+	                    $this.handleChange();
+	                } else {
+	                    clearInterval(timer);
+	                }
+	            }, 2000);
+	        }
+	    }, {
+	        key: 'render',
+	        value: function render() {
+
+	            var progress = this.state.progress;
+	            var innerDivStyle = {
+	                backgroundColor: 'pink',
+	                width: progress + '%'
+
+	            };
+	            var outerDivStyle = {
+	                borderStyle: 'solid'
+
+	            };
+	            if (this.state.progress < 100) {
+
+	                return _react2.default.createElement(
+	                    'div',
+	                    { className: 'col-md-6', style: outerDivStyle },
+	                    _react2.default.createElement(
+	                        'div',
+	                        { style: innerDivStyle },
+	                        this.state.progress,
+	                        '%'
+	                    )
+	                );
+	            } else {
+	                return _react2.default.createElement(
+	                    'h1',
+	                    null,
+	                    'Thank you for downloading with Loudtronix'
+	                );
+	            }
+	        }
+	    }]);
+
+	    return ProgressBar;
+	}(_react2.default.Component);
+	//var ProgressBar = React.createClass({
+	//   
+	//    getInitialState: function(){
+	//        return {progress: 0}//progress is counted in percentile
+	//    },
+	//    handleChange: function(){
+	//
+	//        if(this.state.progress <= 100) {
+	//            var updateProgress = this.state.progress;
+	//            updateProgress = updateProgress + 10;
+	//            this.setState({progress: updateProgress});
+	//        }
+	//        else{
+	//            this.setState({progress: 100});
+	//        }
+	//    },
+	//    componentDidMount: function(){//runs after initial mount
+	//        var updateProgress=this.state.progress + 10;
+	//        this.setState({progress:updateProgress});
+	//    },
+	//    componentDidUpdate: function(){//runs every update
+	//        var $this= this;
+	//
+	//       var timer= setInterval(function(){
+	//            if($this.state.progress<100){
+	//                $this.handleChange()
+	//            }
+	//           else{
+	//                clearInterval(timer);
+	//            }
+	//            },2000
+	//        );
+	//
+	//    },
+	//    render: function(){
+	//        var progress = this.state.progress;
+	//        var innerDivStyle= {
+	//            backgroundColor: 'pink',
+	//            width: progress+'%'
+	//
+	//        };
+	//        var outerDivStyle={
+	//          borderStyle: 'solid'
+	//
+	//        };
+	//        if(this.state.progress < 100){
+	//
+	//            return(
+	//                <div className="col-md-6" style={outerDivStyle} >
+	//                    <div style={innerDivStyle} >{this.state.progress}%</div>
+	//                   
+	//                </div>
+	//            );
+	//        }
+	//        else{
+	//            return(
+	//                <h1>Thank you for downloading with Loudtronix</h1>
+	//				
+	//            );
+	//        }
+	//
+	//    }
+	//   
+	//
+	//});
+	//
+	//
+	//React.render(<ProgressBar/>,
+	//    document.getElementById('react-container'));
+
+
+	exports.default = ProgressBar;
+
+/***/ },
+/* 166 */
+/***/ function(module, exports, __webpack_require__) {
+
 	// style-loader: Adds some css to the DOM by adding a <style> tag
 
 	// load the styles
-	var content = __webpack_require__(166);
+	var content = __webpack_require__(167);
 	if(typeof content === 'string') content = [[module.id, content, '']];
 	// add the styles to the DOM
 	var update = __webpack_require__(164)(content, {});
@@ -29902,7 +30150,7 @@
 	}
 
 /***/ },
-/* 166 */
+/* 167 */
 /***/ function(module, exports, __webpack_require__) {
 
 	exports = module.exports = __webpack_require__(163)();
@@ -29910,7 +30158,368 @@
 
 
 	// module
-	exports.push([module.id, ".sasstest {\n  font-weight: bold;\n  color: #FF0000; }\n", ""]);
+	exports.push([module.id, "", ""]);
+
+	// exports
+
+
+/***/ },
+/* 168 */
+/***/ function(module, exports, __webpack_require__) {
+
+	'use strict';
+
+	Object.defineProperty(exports, "__esModule", {
+		value: true
+	});
+
+	var _createClass = function () { function defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } } return function (Constructor, protoProps, staticProps) { if (protoProps) defineProperties(Constructor.prototype, protoProps); if (staticProps) defineProperties(Constructor, staticProps); return Constructor; }; }();
+
+	var _react = __webpack_require__(1);
+
+	var _react2 = _interopRequireDefault(_react);
+
+	var _PulseLogo = __webpack_require__(169);
+
+	var _PulseLogo2 = _interopRequireDefault(_PulseLogo);
+
+	function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+	function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
+
+	function _possibleConstructorReturn(self, call) { if (!self) { throw new ReferenceError("this hasn't been initialised - super() hasn't been called"); } return call && (typeof call === "object" || typeof call === "function") ? call : self; }
+
+	function _inherits(subClass, superClass) { if (typeof superClass !== "function" && superClass !== null) { throw new TypeError("Super expression must either be null or a function, not " + typeof superClass); } subClass.prototype = Object.create(superClass && superClass.prototype, { constructor: { value: subClass, enumerable: false, writable: true, configurable: true } }); if (superClass) Object.setPrototypeOf ? Object.setPrototypeOf(subClass, superClass) : subClass.__proto__ = superClass; }
+
+	var CircularProgress = function (_React$Component) {
+		_inherits(CircularProgress, _React$Component);
+
+		function CircularProgress(props) {
+			_classCallCheck(this, CircularProgress);
+
+			var _this = _possibleConstructorReturn(this, Object.getPrototypeOf(CircularProgress).call(this, props));
+
+			_this.state = {
+				//Pulse Code
+				pulseHeight: 200,
+				pulseWidth: 200,
+				grow: true,
+				pulseOpacity: 0.75,
+				percentage: 0,
+				progressOpacity: 1,
+				finished: false
+			};
+			return _this;
+		}
+
+		_createClass(CircularProgress, [{
+			key: 'componentDidUpdate',
+			value: function componentDidUpdate() {}
+
+			//			this.setState({percentage:this.state.percentage+5});
+
+			//Pulse Code
+
+		}, {
+			key: 'changeSize',
+			value: function changeSize() {
+
+				if (this.state.percentage < 100) {
+					this.setState({ percentage: this.state.percentage + 0.5 });
+					if (this.state.grow == true) {
+						if (this.state.pulseHeight <= 250) {
+							this.setState({
+								pulseHeight: this.state.pulseHeight + 3,
+								pulseWidth: this.state.pulseWidth + 3,
+								pulseOpacity: this.state.pulseOpacity + 0.025
+							});
+						} else {
+							this.setState({ grow: false });
+						}
+					} else if (this.state.grow == false) {
+						if (this.state.pulseHeight >= 200) {
+							this.setState({
+								pulseHeight: this.state.pulseHeight - 3,
+								pulseWidth: this.state.pulseWidth - 3,
+								pulseOpacity: this.state.pulseOpacity - 0.025
+							});
+						} else {
+							this.setState({ grow: true });
+						}
+					}
+				} else {
+					if (this.state.progressOpacity <= 0) {
+						this.setState({ finished: true });
+					}
+					this.setState({
+						pulseHeight: this.state.pulseHeight + 3,
+						pulseWidth: this.state.pulseWidth + 3,
+						pulseOpacity: this.state.pulseOpacity - 0.050,
+						progressOpacity: this.state.progressOpacity - 0.1
+					});
+				}
+			}
+		}, {
+			key: 'componentDidMount',
+			value: function componentDidMount() {
+				this.setState({ percentage: this.state.percentage + 20 });
+				//Pulse Code
+				var th = this;
+				setInterval(function () {
+					th.changeSize();
+				}, 50);
+			}
+		}, {
+			key: 'render',
+			value: function render() {
+				var radius = this.props.radius - this.props.strokeWidth / 2;
+				var width = this.props.radius * 2;
+				var height = this.props.radius * 2;
+				var viewBox = '0 0 ' + width + ' ' + height;
+				var dashArray = radius * Math.PI * 2;
+				var dashOffset = dashArray - dashArray * this.state.percentage / 100;
+
+				//Pulse Code
+				var pulseHeight = this.state.pulseHeight;
+				var pulseWidth = this.state.pulseWidth;
+				var pulseChange = 275 - pulseWidth;
+				var imgStyle = {
+					margin: pulseChange / 2,
+					height: pulseHeight,
+					width: pulseWidth,
+					opacity: this.state.pulseOpacity
+				};
+
+				var progressStyle = {
+					opacity: this.state.progressOpacity
+				};
+				if (this.state.finished == false) {
+					return _react2.default.createElement(
+						'div',
+						null,
+						_react2.default.createElement(
+							'div',
+							{ className: 'ProgressContainer' },
+							_react2.default.createElement(
+								'svg',
+								{
+									style: progressStyle,
+									className: 'CircularProgress',
+									width: this.props.radius * 2,
+									height: this.props.radius * 2,
+									viewBox: viewBox },
+								_react2.default.createElement('circle', {
+
+									className: 'CircularProgress-Bg',
+									cx: this.props.radius,
+									cy: this.props.radius,
+									r: radius,
+									strokeWidth: this.props.strokeWidth + 'px' }),
+								_react2.default.createElement('circle', {
+
+									className: 'CircularProgress-Fg',
+									cx: this.props.radius,
+									cy: this.props.radius,
+									r: radius,
+									strokeWidth: this.props.strokeWidth + 'px',
+									style: {
+										strokeDasharray: dashArray,
+										strokeDashoffset: dashOffset
+									} })
+							),
+							_react2.default.createElement(
+								'div',
+								{ className: 'PulseLogo' },
+								_react2.default.createElement('img', { src: '../../img/loudtronix_logo.png', style: imgStyle })
+							)
+						)
+					);
+				} else {
+					return _react2.default.createElement('div', null);
+				}
+			}
+		}]);
+
+		return CircularProgress;
+	}(_react2.default.Component);
+
+	exports.default = CircularProgress;
+
+
+	CircularProgress.defaultProps = {
+		radius: 50,
+		percentage: 0,
+		strokeWidth: 1
+	};
+
+/***/ },
+/* 169 */
+/***/ function(module, exports, __webpack_require__) {
+
+	"use strict";
+
+	Object.defineProperty(exports, "__esModule", {
+		value: true
+	});
+
+	var _createClass = function () { function defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } } return function (Constructor, protoProps, staticProps) { if (protoProps) defineProperties(Constructor.prototype, protoProps); if (staticProps) defineProperties(Constructor, staticProps); return Constructor; }; }();
+
+	var _react = __webpack_require__(1);
+
+	var _react2 = _interopRequireDefault(_react);
+
+	function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+	function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
+
+	function _possibleConstructorReturn(self, call) { if (!self) { throw new ReferenceError("this hasn't been initialised - super() hasn't been called"); } return call && (typeof call === "object" || typeof call === "function") ? call : self; }
+
+	function _inherits(subClass, superClass) { if (typeof superClass !== "function" && superClass !== null) { throw new TypeError("Super expression must either be null or a function, not " + typeof superClass); } subClass.prototype = Object.create(superClass && superClass.prototype, { constructor: { value: subClass, enumerable: false, writable: true, configurable: true } }); if (superClass) Object.setPrototypeOf ? Object.setPrototypeOf(subClass, superClass) : subClass.__proto__ = superClass; }
+
+	//var ReactCSSTransitionGroup = require('react-addons-css-transition-group');
+
+	var PulseLogo = function (_React$Component) {
+		_inherits(PulseLogo, _React$Component);
+
+		function PulseLogo(props) {
+			_classCallCheck(this, PulseLogo);
+
+			var _this = _possibleConstructorReturn(this, Object.getPrototypeOf(PulseLogo).call(this, props));
+
+			_this.state = {
+				pulseHeight: 200,
+				pulseWidth: 200,
+				grow: true,
+				pulseOpacity: 0.75
+			};
+			return _this;
+		}
+
+		_createClass(PulseLogo, [{
+			key: "changeSize",
+			value: function changeSize() {
+				if (this.state.grow == true) {
+					if (this.state.pulseHeight <= 250) {
+						this.setState({
+							pulseHeight: this.state.pulseHeight + 3,
+							pulseWidth: this.state.pulseWidth + 3,
+							pulseOpacity: this.state.pulseOpacity + 0.025
+						});
+					} else {
+						this.setState({ grow: false });
+					}
+				} else if (this.state.grow == false) {
+					if (this.state.pulseHeight >= 200) {
+						this.setState({
+							pulseHeight: this.state.pulseHeight - 3,
+							pulseWidth: this.state.pulseWidth - 3,
+							pulseOpacity: this.state.pulseOpacity - 0.025
+						});
+					} else {
+						this.setState({ grow: true });
+					}
+				}
+			}
+		}, {
+			key: "componentDidMount",
+			value: function componentDidMount() {
+				var th = this;
+				setInterval(function () {
+					th.changeSize();
+				}, 50);
+			}
+		}, {
+			key: "render",
+			value: function render() {
+
+				var pulseHeight = this.state.pulseHeight;
+				var pulseWidth = this.state.pulseWidth;
+				var pulseChange = 275 - pulseWidth;
+				var imgStyle = {
+					margin: pulseChange / 2,
+					height: pulseHeight,
+					width: pulseWidth
+
+				};
+
+				return _react2.default.createElement(
+					"span",
+					{ className: "CircularProgress-Text" },
+					_react2.default.createElement("img", { src: "../../img/loudtronix_logo.png", style: imgStyle })
+				);
+			}
+		}]);
+
+		return PulseLogo;
+	}(_react2.default.Component);
+
+	exports.default = PulseLogo;
+
+/***/ },
+/* 170 */
+/***/ function(module, exports, __webpack_require__) {
+
+	// style-loader: Adds some css to the DOM by adding a <style> tag
+
+	// load the styles
+	var content = __webpack_require__(171);
+	if(typeof content === 'string') content = [[module.id, content, '']];
+	// add the styles to the DOM
+	var update = __webpack_require__(164)(content, {});
+	if(content.locals) module.exports = content.locals;
+	// Hot Module Replacement
+	if(false) {
+		// When the styles change, update the <style> tags
+		if(!content.locals) {
+			module.hot.accept("!!./../../../node_modules/css-loader/index.js!./main.css", function() {
+				var newContent = require("!!./../../../node_modules/css-loader/index.js!./main.css");
+				if(typeof newContent === 'string') newContent = [[module.id, newContent, '']];
+				update(newContent);
+			});
+		}
+		// When the module is disposed, remove the <style> tags
+		module.hot.dispose(function() { update(); });
+	}
+
+/***/ },
+/* 171 */
+/***/ function(module, exports, __webpack_require__) {
+
+	exports = module.exports = __webpack_require__(163)();
+	// imports
+	exports.i(__webpack_require__(172), "");
+	exports.i(__webpack_require__(173), "");
+
+	// module
+	exports.push([module.id, "\r\n", ""]);
+
+	// exports
+
+
+/***/ },
+/* 172 */
+/***/ function(module, exports, __webpack_require__) {
+
+	exports = module.exports = __webpack_require__(163)();
+	// imports
+
+
+	// module
+	exports.push([module.id, ":root {\r\n    --progress-bg-color: #ddd;\r\n    --progress-fg-color: #ff0000;\r\n}\r\n\r\n.CircularProgress-Bg,\r\n.CircularProgress-Fg {\r\n    fill: none;\r\n}\r\n\r\n.CircularProgress-Bg {\r\n    stroke: var(--progress-bg-color);\r\n\t\r\n\t\r\n}\r\n\r\n.CircularProgress-Fg {\r\n    transition: stroke-dashoffset .5s ease-in-out;\r\n    stroke: var(--progress-fg-color);\r\n\t\r\n}\r\n\r\n.CircularProgress-Text {\r\n    font-family: sans-serif;\r\n    font-size: 30px;\r\n    fill: var(--progress-fg-color);\r\n\r\n    transform: translate(0 50%);\r\n}\r\n.CircularProgress{\r\n\tposition:absolute;\r\n\t\r\n}\r\n\r\n.PulseLogo{\r\n\tposition: absolute;\r\n\tmargin: 20px;\r\n}\r\n\r\n.ProgressContainer{\r\n\t\r\n}\r\n\r\n", ""]);
+
+	// exports
+
+
+/***/ },
+/* 173 */
+/***/ function(module, exports, __webpack_require__) {
+
+	exports = module.exports = __webpack_require__(163)();
+	// imports
+
+
+	// module
+	exports.push([module.id, "html,\r\nbody,\r\n#container {\r\n    margin: 0;\r\n    padding: 0;\r\n    height: 100%;\r\n}\r\n\r\n#container {\r\n    display: table;\r\n    width: 100%;\r\n}\r\n\r\n.Demo {\r\n    display: table-cell;\r\n\r\n    text-align: center;\r\n    vertical-align: middle;\r\n}\r\n", ""]);
 
 	// exports
 
